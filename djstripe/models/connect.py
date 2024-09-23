@@ -277,6 +277,7 @@ class Transfer(StripeModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         """
         Iterate over reversals on the Transfer object to create and/or sync
@@ -284,7 +285,7 @@ class Transfer(StripeModel):
         """
 
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         # Transfer Reversals exist as a list on the Transfer Object

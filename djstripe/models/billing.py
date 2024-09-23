@@ -853,15 +853,16 @@ class BaseInvoice(StripeModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         # LineItems need a saved invoice because they're associated via a
         # RelatedManager, so this must be done as part of the post save hook.
         cls._stripe_object_to_line_items(
-            target_cls=LineItem, data=data, invoice=self, api_key=api_key
+            target_cls=LineItem, data=data, invoice=self, api_key=api_key, stripe_account=stripe_account
         )
         # sync every discount
         for discount in self.discounts:
@@ -953,14 +954,15 @@ class Invoice(BaseInvoice):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         self.default_tax_rates.set(
             cls._stripe_object_to_default_tax_rates(
-                target_cls=TaxRate, data=data, api_key=api_key
+                target_cls=TaxRate, data=data, api_key=api_key, stripe_account=stripe_account
             )
         )
 
@@ -969,6 +971,7 @@ class Invoice(BaseInvoice):
             data=data,
             instance=self,
             api_key=api_key,
+            stripe_account=stripe_account,
         )
 
 
@@ -1012,7 +1015,7 @@ class UpcomingInvoice(BaseInvoice):
         )
 
         self._lineitems = cls._stripe_object_to_line_items(
-            target_cls=LineItem, data=data, invoice=self, api_key=api_key
+            target_cls=LineItem, data=data, invoice=self, api_key=api_key, #stripe_account=stripe_account # has been accounted for in function
         )
 
     def _attach_objects_post_save_hook(
@@ -1021,13 +1024,14 @@ class UpcomingInvoice(BaseInvoice):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         self._default_tax_rates = cls._stripe_object_to_default_tax_rates(
-            target_cls=TaxRate, data=data, api_key=api_key
+            target_cls=TaxRate, data=data, api_key=api_key, stripe_account=stripe_account
         )
 
         total_tax_amounts = []
@@ -1253,16 +1257,17 @@ class InvoiceItem(StripeModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         if self.pk:
             # only call .set() on saved instance (ie don't on items of UpcomingInvoice)
             self.tax_rates.set(
                 cls._stripe_object_to_tax_rates(
-                    target_cls=TaxRate, data=data, api_key=api_key
+                    target_cls=TaxRate, data=data, api_key=api_key, stripe_account=stripe_account
                 )
             )
 
@@ -1416,9 +1421,10 @@ class LineItem(StripeModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         # sync every discount
@@ -2236,18 +2242,19 @@ class Subscription(StripeModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         cls._stripe_object_to_subscription_items(
-            target_cls=SubscriptionItem, data=data, subscription=self, api_key=api_key
+            target_cls=SubscriptionItem, data=data, subscription=self, api_key=api_key, stripe_account=stripe_account
         )
 
         self.default_tax_rates.set(
             cls._stripe_object_to_default_tax_rates(
-                target_cls=TaxRate, data=data, api_key=api_key
+                target_cls=TaxRate, data=data, api_key=api_key, stripe_account=stripe_account
             )
         )
 
@@ -2339,14 +2346,15 @@ class SubscriptionItem(StripeModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, api_key=api_key, pending_relations=pending_relations
+            cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
         )
 
         self.tax_rates.set(
             cls._stripe_object_to_tax_rates(
-                target_cls=TaxRate, data=data, api_key=api_key
+                target_cls=TaxRate, data=data, api_key=api_key, stripe_account=stripe_account
             )
         )
 
@@ -2711,6 +2719,8 @@ class TaxId(StripeModel):
         """
         # Update kwargs with `expand` param
         kwargs = cls.get_expand_params(api_key, **kwargs)
+        if kwargs.get('customer', None) is None and kwargs.get('id', None) is not None:
+                    kwargs['customer'] = kwargs.pop('id')
 
         return stripe.Customer.list_tax_ids(
             api_key=api_key,
@@ -2953,6 +2963,9 @@ class UsageRecordSummary(StripeModel):
             SubscriptionItem.objects.get(id=kwargs["id"])
         except SubscriptionItem.DoesNotExist:
             raise
+
+        if kwargs.get('subscription_item', None) is None and kwargs.get('id', None) is not None:
+                kwargs['subscription_item'] = kwargs.pop('id')
 
         return stripe.SubscriptionItem.list_usage_record_summaries(
             api_key=api_key,

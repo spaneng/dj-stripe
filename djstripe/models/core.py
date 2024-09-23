@@ -483,13 +483,14 @@ class Charge(StripeModel):
         data,
         pending_relations=None,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, pending_relations=pending_relations, api_key=api_key
+            cls, data, pending_relations=pending_relations, api_key=api_key, stripe_account=stripe_account
         )
 
         cls._stripe_object_to_refunds(
-            target_cls=Refund, data=data, charge=self, api_key=api_key
+            target_cls=Refund, data=data, charge=self, api_key=api_key, stripe_account=stripe_account
         )
 
 
@@ -925,6 +926,7 @@ class Customer(StripeModel):
                 "balance": stripe_customer.get("balance", 0),
                 "delinquent": stripe_customer.get("delinquent", False),
             },
+            djstripe_owner_account_id=stripe_account,
         )
 
         return customer
@@ -1326,12 +1328,13 @@ class Customer(StripeModel):
         data,
         pending_relations=None,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
+        stripe_account=None,
     ):
         from .billing import Coupon
         from .payment_methods import DjstripePaymentMethod
 
         super()._attach_objects_post_save_hook(
-            cls, data, pending_relations=pending_relations, api_key=api_key
+            cls, data, pending_relations=pending_relations, api_key=api_key, stripe_account=stripe_account
         )
 
         save = False
@@ -1351,7 +1354,7 @@ class Customer(StripeModel):
         discount = data.get("discount")
         if discount:
             coupon, _created = Coupon._get_or_create_from_stripe_object(
-                discount, "coupon", api_key=api_key
+                discount, "coupon", api_key=api_key, stripe_account=stripe_account
             )
             if coupon and coupon != self.coupon:
                 self.coupon = coupon
@@ -1501,9 +1504,10 @@ class Dispute(StripeModel):
         data,
         pending_relations=None,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
+        stripe_account=None,
     ):
         super()._attach_objects_post_save_hook(
-            cls, data, pending_relations=pending_relations, api_key=api_key
+            cls, data, pending_relations=pending_relations, api_key=api_key, stripe_account=stripe_account
         )
 
         # Retrieve and save files from the dispute.evidence object.

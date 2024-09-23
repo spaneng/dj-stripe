@@ -503,6 +503,9 @@ class Command(BaseCommand):
             instance, models.Account
         ):
             # fetch all Card and BankAccount objects associated with the instance
+            if kwargs.get('account', None) is None and kwargs.get('id', None) is not None:
+                    kwargs['account'] = kwargs.pop('id')
+            
             items = models.Account.stripe_class.list_external_accounts(
                 **kwargs
             ).auto_paging_iter()
@@ -511,7 +514,8 @@ class Command(BaseCommand):
         elif isinstance(instance, models.Customer):
             for object in ("card", "bank_account"):
                 kwargs["object"] = object
-
+                if kwargs.get('customer', None) is None and kwargs.get('id', None) is not None:
+                    kwargs['customer'] = kwargs.pop('id')
                 # fetch all Card and BankAccount objects associated with the instance
                 items = models.Customer.stripe_class.list_sources(
                     **kwargs

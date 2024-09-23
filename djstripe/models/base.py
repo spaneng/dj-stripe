@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Type
 
 from django.db import IntegrityError, models, transaction
 from django.utils import dateformat, timezone
-from stripe import APIResource, InvalidRequestError, convert_to_stripe_object
+from stripe import APIResource, InvalidRequestError, convert_to_stripe_object, StripeObject
 
 from ..exceptions import ImpossibleAPIRequest
 from ..fields import (
@@ -597,6 +597,7 @@ class StripeModel(StripeBaseModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         pending_relations=None,
+        stripe_account=None,
     ):
         """
         Gets called by this object's create and sync methods just after save.
@@ -690,7 +691,7 @@ class StripeModel(StripeBaseModel):
                 instance.save()
 
             instance._attach_objects_post_save_hook(
-                cls, data, api_key=api_key, pending_relations=pending_relations
+                cls, data, api_key=api_key, pending_relations=pending_relations, stripe_account=stripe_account
             )
 
         return instance
@@ -729,6 +730,9 @@ class StripeModel(StripeBaseModel):
 
         if pending_relations is None:
             pending_relations = []
+
+        if not stripe_account and isinstance(data, StripeObject):
+            stripe_account = data.stripe_account
 
         id_ = get_id_from_stripe_data(field)
 
@@ -817,6 +821,7 @@ class StripeModel(StripeBaseModel):
         data,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
         current_ids=None,
+        stripe_account=None,
     ):
         """
         Search the given manager for the Customer matching this object's
@@ -829,14 +834,17 @@ class StripeModel(StripeBaseModel):
         :type current_ids: set
         """
 
+        if stripe_account is None:
+            stripe_account = getattr(data, "stripe_account", None)
+
         if "customer" in data and data["customer"]:
             return target_cls._get_or_create_from_stripe_object(
-                data, "customer", current_ids=current_ids, api_key=api_key
+                data, "customer", current_ids=current_ids, api_key=api_key, stripe_account=stripe_account
             )[0]
 
     @classmethod
     def _stripe_object_to_default_tax_rates(
-        cls, target_cls, data, api_key=djstripe_settings.STRIPE_SECRET_KEY
+        cls, target_cls, data, api_key=djstripe_settings.STRIPE_SECRET_KEY, stripe_account=None
     ):
         """
         Retrieves TaxRates for a Subscription or Invoice
@@ -850,7 +858,7 @@ class StripeModel(StripeBaseModel):
 
         for tax_rate_data in data.get("default_tax_rates", []):
             tax_rate, _ = target_cls._get_or_create_from_stripe_object(
-                tax_rate_data, refetch=False, api_key=api_key
+                tax_rate_data, refetch=False, api_key=api_key, stripe_account=stripe_account
             )
             tax_rates.append(tax_rate)
 
@@ -858,7 +866,7 @@ class StripeModel(StripeBaseModel):
 
     @classmethod
     def _stripe_object_to_tax_rates(
-        cls, target_cls, data, api_key=djstripe_settings.STRIPE_SECRET_KEY
+        cls, target_cls, data, api_key=djstripe_settings.STRIPE_SECRET_KEY, stripe_account=None
     ):
         """
         Retrieves TaxRates for a SubscriptionItem or InvoiceItem
@@ -870,7 +878,7 @@ class StripeModel(StripeBaseModel):
 
         for tax_rate_data in data.get("tax_rates", []):
             tax_rate, _ = target_cls._get_or_create_from_stripe_object(
-                tax_rate_data, refetch=False, api_key=api_key
+                tax_rate_data, refetch=False, api_key=api_key, stripe_account=stripe_account
             )
             tax_rates.append(tax_rate)
 
@@ -878,7 +886,7 @@ class StripeModel(StripeBaseModel):
 
     @classmethod
     def _stripe_object_set_total_tax_amounts(
-        cls, target_cls, data, instance, api_key=djstripe_settings.STRIPE_SECRET_KEY
+        cls, target_cls, data, instance, api_key=djstripe_settings.STRIPE_SECRET_KEY, stripe_account=None
     ):
         """
         Set total tax amounts on Invoice instance
@@ -902,6 +910,7 @@ class StripeModel(StripeBaseModel):
                 field_name="tax_rate",
                 refetch=True,
                 api_key=api_key,
+                stripe_account=stripe_account,
             )
             tax_amount, _ = target_cls.objects.update_or_create(
                 invoice=instance,
@@ -918,7 +927,7 @@ class StripeModel(StripeBaseModel):
 
     @classmethod
     def _stripe_object_to_line_items(
-        cls, target_cls, data, invoice, api_key=djstripe_settings.STRIPE_SECRET_KEY
+        cls, target_cls, data, invoice, api_key=djstripe_settings.STRIPE_SECRET_KEY, stripe_account=None
     ):
         """
         Retrieves LineItems for an invoice.
@@ -938,6 +947,9 @@ class StripeModel(StripeBaseModel):
         lines = data.get("lines")
         if not lines:
             return []
+        
+        if stripe_account is None:
+            stripe_account = getattr(data, "stripe_account", None)
 
         lineitems = []
         for line in lines.auto_paging_iter():
@@ -953,7 +965,7 @@ class StripeModel(StripeBaseModel):
             line.setdefault("date", int(dateformat.format(invoice.created, "U")))
 
             item, _ = target_cls._get_or_create_from_stripe_object(
-                line, refetch=False, save=save, api_key=api_key
+                line, refetch=False, save=save, api_key=api_key, stripe_account=stripe_account
             )
             lineitems.append(item)
 
@@ -961,7 +973,7 @@ class StripeModel(StripeBaseModel):
 
     @classmethod
     def _stripe_object_to_subscription_items(
-        cls, target_cls, data, subscription, api_key=djstripe_settings.STRIPE_SECRET_KEY
+        cls, target_cls, data, subscription, api_key=djstripe_settings.STRIPE_SECRET_KEY, stripe_account=None
     ):
         """
         Retrieves SubscriptionItems for a subscription.
@@ -985,7 +997,7 @@ class StripeModel(StripeBaseModel):
         subscriptionitems = []
         for item_data in items.auto_paging_iter():
             item, _ = target_cls._get_or_create_from_stripe_object(
-                item_data, refetch=False, api_key=api_key
+                item_data, refetch=False, api_key=api_key, stripe_account=stripe_account
             )
 
             # sync the SubscriptionItem
@@ -999,7 +1011,7 @@ class StripeModel(StripeBaseModel):
 
     @classmethod
     def _stripe_object_to_refunds(
-        cls, target_cls, data, charge, api_key=djstripe_settings.STRIPE_SECRET_KEY
+        cls, target_cls, data, charge, api_key=djstripe_settings.STRIPE_SECRET_KEY, stripe_account=None
     ):
         """
         Retrieves Refunds for a charge
@@ -1017,7 +1029,7 @@ class StripeModel(StripeBaseModel):
             return []
 
         refund_objs = []
-        stripe_account = getattr(stripe_refunds, "stripe_account", None)
+        # stripe_account = getattr(stripe_refunds, "stripe_account", None)
         for refund_data in stripe_refunds.auto_paging_iter():
             item, _ = target_cls._get_or_create_from_stripe_object(
                 refund_data,
@@ -1071,7 +1083,7 @@ class StripeModel(StripeBaseModel):
                 cls, data, api_key=api_key, current_ids=current_ids
             )
             instance.save()
-            instance._attach_objects_post_save_hook(cls, data, api_key=api_key)
+            instance._attach_objects_post_save_hook(cls, data, api_key=api_key, stripe_account=None)
 
         for field in instance._meta.concrete_fields:
             if isinstance(field, (StripePercentField, models.UUIDField)):

@@ -234,11 +234,12 @@ class Account(StripeModel):
         data,
         pending_relations=None,
         api_key=djstripe_settings.STRIPE_SECRET_KEY,
+        stripe_account=None,
     ):
         from ..models.core import File
 
         super()._attach_objects_post_save_hook(
-            cls, data, pending_relations=pending_relations, api_key=api_key
+            cls, data, pending_relations=pending_relations, api_key=api_key, stripe_account=stripe_account
         )
 
         # set the livemode if not returned by data

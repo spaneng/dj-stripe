@@ -133,7 +133,12 @@ class DjstripeSettings:
         Get the desired API version to use for Stripe requests.
         """
         version = getattr(settings, "STRIPE_API_VERSION", stripe.api_version)
-        return version or self.DEFAULT_STRIPE_API_VERSION
+        # this will overide the stripe.api_version to the version set in settings
+        # we don't want this we want it set to "2020-08-27"
+        # as per the djstripe documentation
+        
+        # return version or self.DEFAULT_STRIPE_API_VERSION
+        return  self.DEFAULT_STRIPE_API_VERSION
 
     def get_callback_function(self, setting_name, default=None):
         """
