@@ -2861,15 +2861,19 @@ class UsageRecord(StripeModel):
         except SubscriptionItem.DoesNotExist:
             raise
 
+        ## Pop the id from kwargs
+        sub_id = kwargs.pop('id')
+        
         usage_stripe_data = stripe.SubscriptionItem.create_usage_record(
+            sub_id,
             api_key=api_key, **kwargs
         )
 
         # ! Hack: there is no way to retrieve a UsageRecord object from Stripe,
         # ! which is why we create and sync it right here
-        cls.sync_from_stripe_data(usage_stripe_data, api_key=api_key)
+        new_record = cls.sync_from_stripe_data(usage_stripe_data, api_key=api_key)
 
-        return usage_stripe_data
+        return new_record
 
     @classmethod
     def create(cls, **kwargs):
